@@ -1,0 +1,58 @@
+name: Build Bottle
+
+on:
+  workflow_dispatch:
+    inputs:
+      formula:
+        description: "Formula name to bottle"
+        required: true
+        default: "img-tui"
+
+permissions:
+  contents: write
+
+jobs:
+  bottle:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Install and bottle formula
+        env:
+          FORMULA: ${{ inputs.formula }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAP_DIR="$(brew --repository)/Library/Taps/bpppoh/homebrew-tap"
+          mkdir -p "$(dirname "$TAP_DIR")"
+          rm -rf "$TAP_DIR"
+          ln -s "$GITHUB_WORKSPACE" "$TAP_DIR"
+
+          VERSION="$(ruby -e 'puts File.read(ARGV[0])[/url ".*\/v([^\/]+)\.tar\.gz"/, 1]' "Formula/${FORMULA}.rb")"
+          TAG="bottles-${FORMULA}-${VERSION}"
+          ROOT_URL="https://github.com/bpppoh/homebrew-tap/releases/download/${TAG}"
+
+          brew install --build-bottle "bpppoh/tap/${FORMULA}"
+          brew test "bpppoh/tap/${FORMULA}"
+          brew bottle --no-rebuild --json --root-url="${ROOT_URL}" "bpppoh/tap/${FORMULA}"
+
+          ls -la *.bottle.*
+          cat *.bottle.json
+
+          for f in *.bottle.tar.gz; do
+            clean="${f/--/-}"
+            if [ "$f" != "$clean" ]; then
+              cp "$f" "$clean"
+            fi
+          done
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" *.bottle.tar.gz --clobber
+          else
+            gh release create "$TAG" *.bottle.tar.gz \
+              --title "Bottle ${FORMULA} ${VERSION}" \
+              --notes "Prebuilt Homebrew bottle for bpppoh/tap/${FORMULA} ${VERSION}"
+          fi

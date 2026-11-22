@@ -16,19 +16,30 @@ class ImgTui < Formula
   def install
     libexec.install "src"
 
-    python = formula_opt_libexec("python@3.14")/"bin/python"
-    (libexec/"img-tui").write <<~PYTHON
-      #!#{python}
-      import sys
-
-      sys.path.insert(0, "#{libexec}/src")
-
-      from img_tui.__main__ import main
-
-
-      if __name__ == "__main__":
-          raise SystemExit(main())
-    PYTHON
+    (libexec/"img-tui").write <<~SH
+      #!/bin/sh
+      SELF="$0"
+      CALL_DIR="$(cd "$(dirname "$0")" && pwd)"
+      while [ -L "$SELF" ]; do
+        TARGET="$(readlink "$SELF")"
+        case "$TARGET" in
+          /*) SELF="$TARGET" ;;
+          *) SELF="$(dirname "$SELF")/$TARGET" ;;
+        esac
+      done
+      CELLAR_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+      PY=""
+      for candidate in \\
+        "$CALL_DIR/../opt/python@3.14/libexec/bin/python" \\
+        "$CELLAR_ROOT/../../opt/python@3.14/libexec/bin/python"; do
+        if [ -x "$candidate" ]; then
+          PY="$candidate"
+          break
+        fi
+      done
+      [ -n "$PY" ] || PY="python3.14"
+      PYTHONPATH="$CELLAR_ROOT/libexec/src${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m img_tui "$@"
+    SH
 
     chmod 0755, libexec/"img-tui"
     bin.install_symlink libexec/"img-tui"
