@@ -110,5 +110,5 @@ jobs:
           if ! git -C "$TAP_DIR" diff --quiet; then
             git -C "$TAP_DIR" add "Formula/${FORMULA}.rb"
             git -C "$TAP_DIR" commit -m "chore(${FORMULA}): add ${VERSION} bottle checksums"
-            git -C "$TAP_DIR" push origin main
+            git -C "$TAP_DIR" push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
           fi

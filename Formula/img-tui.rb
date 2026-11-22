@@ -5,6 +5,12 @@ class ImgTui < Formula
   sha256 "90db264d83a7279f083b4bcad3b3dc689d5bb13424706e3b3b4b03ab343088c8"
   license "MIT"
 
+  bottle do
+    root_url "https://github.com/bpppoh/homebrew-tap/releases/download/bottles-img-tui-1.0.0"
+    sha256 cellar: :any_skip_relocation, arm64_sequoia: "4339a925cea20c5bde3aaa9f113d2c02cd49fff89d912ccfeab639ac3a1975f8"
+    sha256 cellar: :any_skip_relocation, x86_64_linux:  "64167ea0f588018992c0a9a5fe464f2cbd9d1ce655e2b04c38168a1c83987999"
+  end
+
   depends_on "gifsicle"
   depends_on "mozjpeg"
   depends_on "oxipng"
