@@ -16,7 +16,7 @@ class ImgTui < Formula
   def install
     libexec.install "src"
 
-    python = Formula["python@3.14"].opt_libexec/"bin/python"
+    python = formula_opt_libexec("python@3.14")/"bin/python"
     (libexec/"img-tui").write <<~PYTHON
       #!#{python}
       import sys
@@ -45,7 +45,7 @@ class ImgTui < Formula
 
   test do
     assert_match "img-tui #{version}", shell_output("#{bin}/img-tui --version")
-    python = Formula["python@3.14"].opt_libexec/"bin/python"
+    python = formula_opt_libexec("python@3.14")/"bin/python"
     system python, "-c",
            "import sys; sys.path.insert(0, '#{libexec}/src'); " \
            "from PIL import Image; " \
