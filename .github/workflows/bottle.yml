@@ -12,8 +12,12 @@ permissions:
   contents: write
 
 jobs:
-  bottle:
-    runs-on: ubuntu-24.04
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -24,7 +28,6 @@ jobs:
       - name: Install and bottle formula
         env:
           FORMULA: ${{ inputs.formula }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAP_DIR="$(brew --repository)/Library/Taps/bpppoh/homebrew-tap"
           mkdir -p "$(dirname "$TAP_DIR")"
@@ -39,8 +42,44 @@ jobs:
           brew test "bpppoh/tap/${FORMULA}"
           brew bottle --no-rebuild --json --root-url="${ROOT_URL}" "bpppoh/tap/${FORMULA}"
 
+      - name: Upload bottle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottles-${{ matrix.os }}
+          path: "*.bottle.*"
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Download bottle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bottles-*
+          merge-multiple: true
+
+      - name: Merge bottles and publish release
+        env:
+          FORMULA: ${{ inputs.formula }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAP_DIR="$(brew --repository)/Library/Taps/bpppoh/homebrew-tap"
+          mkdir -p "$(dirname "$TAP_DIR")"
+          rm -rf "$TAP_DIR"
+          ln -s "$GITHUB_WORKSPACE" "$TAP_DIR"
+
+          VERSION="$(ruby -e 'puts File.read(ARGV[0])[/url ".*\/v([^\/]+)\.tar\.gz"/, 1]' "Formula/${FORMULA}.rb")"
+          TAG="bottles-${FORMULA}-${VERSION}"
+
           ls -la *.bottle.*
-          cat *.bottle.json
+          brew bottle --merge --write --no-commit *.bottle.json
+          git -C "$TAP_DIR" diff
 
           for f in *.bottle.tar.gz; do
             clean="${f/--/-}"
@@ -49,10 +88,27 @@ jobs:
             fi
           done
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" *.bottle.tar.gz --clobber
+          if grep -q "all:" "${TAP_DIR}/Formula/${FORMULA}.rb"; then
+            FIRST_TAR="$(ls *.bottle.tar.gz | head -n 1)"
+            ALL_NAME="${FORMULA}-${VERSION}.all.bottle.tar.gz"
+            cp "$FIRST_TAR" "$ALL_NAME"
+            UPLOAD_FILES=("$ALL_NAME")
           else
-            gh release create "$TAG" *.bottle.tar.gz \
+            UPLOAD_FILES=(*.bottle.tar.gz)
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${UPLOAD_FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${UPLOAD_FILES[@]}" \
               --title "Bottle ${FORMULA} ${VERSION}" \
               --notes "Prebuilt Homebrew bottle for bpppoh/tap/${FORMULA} ${VERSION}"
+          fi
+
+          git -C "$TAP_DIR" config user.name "github-actions[bot]"
+          git -C "$TAP_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git -C "$TAP_DIR" diff --quiet; then
+            git -C "$TAP_DIR" add "Formula/${FORMULA}.rb"
+            git -C "$TAP_DIR" commit -m "chore(${FORMULA}): add ${VERSION} bottle checksums"
+            git -C "$TAP_DIR" push origin main
           fi
